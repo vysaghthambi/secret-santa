@@ -64,7 +64,7 @@ export default function SecretSanta() {
   }
 
   const handleDownload = async () => {
-    if (!employeeFile || !previousFile) {
+    if (!employeeFile) {
       window.alert("Please upload both files");
       return;
     }
@@ -72,48 +72,60 @@ export default function SecretSanta() {
     try {
       setIsLoading(true);
 
-      const [employees, previousData] = await Promise.all([
+      const [employees, previousData = []] = await Promise.all([
         getParsedData(employeeFile) as Promise<EmployeeType[]>,
-        getParsedData(previousFile) as Promise<SecretChildType[]>
+        ...(previousFile ? [getParsedData(previousFile) as Promise<SecretChildType[]>] : [])
       ])
 
-      const availableEmployees = [...employees];
+      const maxAttempts = 5;
+      let retries = 0;
 
-      const assignments: SecretChildType[] = [];
-      const assignedChildren: Set<string> = new Set();
+      while (retries < maxAttempts) {
+        const availableEmployees = [...employees];
 
-      for (const employee of employees) {
-        const possibleChildren = availableEmployees.filter((child) => (
-          child.Employee_EmailID !== employee.Employee_EmailID &&
-          !previousData.some((data) => (
-            data.Employee_EmailID === employee.Employee_EmailID &&
-            data.Secret_Child_EmailID === child.Employee_EmailID
-          )) &&
-          !assignedChildren.has(child.Employee_EmailID)
-        ))
+        const assignments: SecretChildType[] = [];
+        const assignedChildren: Set<string> = new Set();
+        let valid = true;
 
-        if (possibleChildren.length === 0) {
-          window.alert("Failed to generate assignments, please try again!");
+        for (const employee of employees) {
+          const possibleChildren = availableEmployees.filter((child) => (
+            child.Employee_EmailID !== employee.Employee_EmailID &&
+            !previousData.some((data) => (
+              data.Employee_EmailID === employee.Employee_EmailID &&
+              data.Secret_Child_EmailID === child.Employee_EmailID
+            )) &&
+            !assignedChildren.has(child.Employee_EmailID)
+          ))
+
+          if (possibleChildren.length === 0) {
+            valid = false;
+            break;
+          }
+
+          const secretChild = possibleChildren[Math.floor(Math.random() * possibleChildren.length)];
+          assignedChildren.add(secretChild.Employee_EmailID);
+
+          assignments.push({
+            Employee_EmailID: employee.Employee_EmailID,
+            Employee_Name: employee.Employee_Name,
+            Secret_Child_EmailID: secretChild.Employee_EmailID,
+            Secret_Child_Name: secretChild.Employee_Name
+          })
+        }
+
+        if (valid) {
+          const worksheet = XLSX.utils.json_to_sheet(assignments);
+          const workbook = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(workbook, worksheet, "Assignments");
+          const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+          const blob = new Blob([excelBuffer], { type: "application/octet-stream" });
+          saveAs(blob, "SecretSantaAssignments.xlsx");
+
           return;
         }
 
-        const secretChild = possibleChildren[Math.floor(Math.random() * possibleChildren.length)];
-        assignedChildren.add(secretChild.Employee_EmailID);
-
-        assignments.push({
-          Employee_EmailID: employee.Employee_EmailID,
-          Employee_Name: employee.Employee_Name,
-          Secret_Child_EmailID: secretChild.Employee_EmailID,
-          Secret_Child_Name: secretChild.Employee_Name
-        })
+        retries++;
       }
-
-      const worksheet = XLSX.utils.json_to_sheet(assignments);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Assignments");
-      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-      const blob = new Blob([excelBuffer], { type: "application/octet-stream" });
-      saveAs(blob, "SecretSantaAssignments.xlsx");
     } catch (error) {
       console.error(error);
       window.alert("Something went wrong!")
@@ -148,7 +160,7 @@ export default function SecretSanta() {
       />
       <button
         className={style.DownloadBtn}
-        disabled={!employeeFile || !previousFile || isLoading}
+        disabled={!employeeFile || isLoading}
         onClick={handleDownload}
       >
         {
