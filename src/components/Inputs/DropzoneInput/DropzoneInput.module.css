@@ -1,0 +1,8 @@
+.DropzoneContainer {
+  border: 1px dotted #000;
+  cursor: pointer;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
